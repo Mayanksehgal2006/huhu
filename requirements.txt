@@ -3,3 +3,4 @@ gunicorn
 twilio
 selenium
 tinydb
+webdriver-manager
