@@ -1,5 +1,5 @@
 Flask
+gunicorn
 twilio
 selenium
-pillow
-gunicorn
+tinydb
