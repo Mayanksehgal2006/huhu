@@ -5,29 +5,41 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from config_handler import load_config, save_config
+from tinydb import TinyDB, Query
 import base64
 import time
 import os
 
 app = Flask(__name__)
 
-# In-memory session state
-session_data = {
-    "step": "start",
-    "captcha_src": "",
-    "driver": None
-}
+db = TinyDB('session_db.json')
+User = Query()
+
+def get_user_data(phone):
+    result = db.get(User.phone == phone)
+    if not result:
+        return {
+            "phone": phone,
+            "step": "start",
+            "username": None,
+            "password": None,
+            "semester": None,
+            "captcha_src": "",
+        }
+    return result
+
+def update_user_data(phone, data):
+    db.upsert(data, User.phone == phone)
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_reply():
     incoming_msg = request.values.get("Body", "").strip()
+    sender = request.values.get("From", "").split(":")[-1]
     resp = MessagingResponse()
     msg = resp.message()
 
-    config = load_config()
+    data = get_user_data(sender)
 
-    # Help Section
     if incoming_msg.lower() == "help":
         msg.body("Available commands:\n" +
                  "1. reset username\n" +
@@ -35,54 +47,55 @@ def whatsapp_reply():
                  "3. reset semester\n" +
                  "4. reset all\n" +
                  "Reply with your choice.")
-        session_data["step"] = "awaiting_help"
+        data["step"] = "awaiting_help"
+        update_user_data(sender, data)
         return str(resp)
 
-    if session_data["step"] == "awaiting_help":
+    if data["step"] == "awaiting_help":
         if "username" in incoming_msg.lower():
             msg.body("Please enter your new username:")
-            session_data["step"] = "awaiting_username"
+            data["step"] = "awaiting_username"
         elif "password" in incoming_msg.lower():
             msg.body("Please enter your new password:")
-            session_data["step"] = "awaiting_password"
+            data["step"] = "awaiting_password"
         elif "semester" in incoming_msg.lower():
             msg.body("Please enter your semester code (e.g., 2025EVESem):")
-            session_data["step"] = "awaiting_semester"
+            data["step"] = "awaiting_semester"
         elif "all" in incoming_msg.lower():
-            config = {"username": None, "password": None, "semester": None}
-            save_config(config)
+            data = get_user_data(sender)
+            data.update({"username": None, "password": None, "semester": None, "step": "start"})
             msg.body("All credentials cleared. Please start over.")
-            session_data["step"] = "start"
         else:
             msg.body("Invalid command. Send 'help' to see options.")
+        update_user_data(sender, data)
         return str(resp)
 
-    # Collect credentials if not set
-    if not config.get("username"):
+    if data["username"] is None:
         msg.body("Enter your Username:")
-        session_data["step"] = "awaiting_username"
+        data["step"] = "awaiting_username"
+        update_user_data(sender, data)
         return str(resp)
 
-    if session_data["step"] == "awaiting_username":
-        config["username"] = incoming_msg
-        save_config(config)
+    if data["step"] == "awaiting_username":
+        data["username"] = incoming_msg
+        data["step"] = "awaiting_password"
         msg.body("Enter your Password:")
-        session_data["step"] = "awaiting_password"
+        update_user_data(sender, data)
         return str(resp)
 
-    if session_data["step"] == "awaiting_password":
-        config["password"] = incoming_msg
-        save_config(config)
+    if data["step"] == "awaiting_password":
+        data["password"] = incoming_msg
+        data["step"] = "awaiting_semester"
         msg.body("Enter your Semester Code (e.g., 2025EVESem):")
-        session_data["step"] = "awaiting_semester"
+        update_user_data(sender, data)
         return str(resp)
 
-    if session_data["step"] == "awaiting_semester":
-        config["semester"] = incoming_msg
-        save_config(config)
-        session_data["step"] = "start"
+    if data["step"] == "awaiting_semester":
+        data["semester"] = incoming_msg
+        data["step"] = "start"
+        update_user_data(sender, data)
 
-    if session_data["step"] == "start":
+    if data["step"] == "start":
         msg.body("Logging in to JIIT portal... Please wait.")
         options = Options()
         options.add_argument('--headless')
@@ -90,7 +103,6 @@ def whatsapp_reply():
         options.add_argument('--disable-dev-shm-usage')
 
         driver = webdriver.Chrome(options=options)
-        session_data["driver"] = driver
 
         driver.get("https://webportal.jiit.ac.in:6011/studentportal/#/login")
         time.sleep(5)
@@ -99,25 +111,30 @@ def whatsapp_reply():
         src = captcha_img.get_attribute("src")
 
         if "base64" in src:
-            session_data["captcha_src"] = src
             img_data = base64.b64decode(src.split(",")[1])
-            with open("static/captcha.jpeg", "wb") as f:
+            path = f"static/{sender}_captcha.jpeg"
+            with open(path, "wb") as f:
                 f.write(img_data)
-            msg.media("https://jiit-attendance-bot.onrender.com/static/captcha.jpeg")
+            msg.media(f"https://jiit-attendance-bot.onrender.com/{path}")
             msg.body("Please reply with the CAPTCHA text.")
-            session_data["step"] = "awaiting_captcha"
+            data["step"] = "awaiting_captcha"
+            update_user_data(sender, data)
         else:
             msg.body("Could not retrieve captcha. Please try again.")
 
-    elif session_data["step"] == "awaiting_captcha":
+    elif data["step"] == "awaiting_captcha":
         captcha = incoming_msg
-        driver = session_data["driver"]
+        options = Options()
+        options.add_argument('--headless')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        driver = webdriver.Chrome(options=options)
+        driver.get("https://webportal.jiit.ac.in:6011/studentportal/#/login")
+        time.sleep(5)
 
-        driver.find_element(By.ID, "mat-input-0").send_keys(config["username"])
-        driver.find_element(By.ID, "mat-input-1").send_keys(config["password"])
-        captcha_input = driver.find_element(By.CSS_SELECTOR, "input.ng-pristine")
-        captcha_input.send_keys(captcha)
-
+        driver.find_element(By.ID, "mat-input-0").send_keys(data["username"])
+        driver.find_element(By.ID, "mat-input-1").send_keys(data["password"])
+        driver.find_element(By.CSS_SELECTOR, "input.ng-pristine").send_keys(captcha)
         driver.find_element(By.CSS_SELECTOR, "button.ng-pristine").click()
         time.sleep(5)
 
@@ -135,12 +152,14 @@ def whatsapp_reply():
             )
             driver.execute_script("arguments[0].click();", select)
             time.sleep(1)
-            sem_option = driver.find_element(By.XPATH, f"//*[contains(text(),'{config['semester']}')]")
+
+            sem_option = driver.find_element(By.XPATH, f"//*[contains(text(),'{data['semester']}')]")
             driver.execute_script("arguments[0].click();", sem_option)
             time.sleep(1)
-            driver.find_element(By.XPATH, "//button[contains(text(),'Submit')]").click()
 
+            driver.find_element(By.XPATH, "//button[contains(text(),'Submit')]").click()
             time.sleep(3)
+
             table = driver.find_element(By.ID, "pn_id_4-table")
             rows = table.find_elements(By.TAG_NAME, "tr")
 
@@ -152,18 +171,16 @@ def whatsapp_reply():
                 output += f"{sub}: {overall}%\n"
 
             msg.body(output)
-            session_data["step"] = "done"
+            data["step"] = "done"
         except Exception as e:
             msg.body(f"Error retrieving attendance: {e}")
 
+        update_user_data(sender, data)
+
     else:
-        msg.body("Session ended. Send any message to start again or type 'help'.")
-        if session_data.get("driver"):
-            try:
-                session_data["driver"].quit()
-            except:
-                pass
-        session_data["step"] = "start"
+        msg.body("Session ended or unknown command. Type any message to start again or 'help'.")
+        data["step"] = "start"
+        update_user_data(sender, data)
 
     return str(resp)
 
