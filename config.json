@@ -1,9 +1,5 @@
 {
-  "users": {
-    "default": {
-      "username": "",
-      "password": "",
-      "semester": ""
-    }
-  }
+  "username": null,
+  "password": null,
+  "semester": null
 }
