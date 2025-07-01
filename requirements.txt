@@ -1,0 +1,5 @@
+Flask
+twilio
+selenium
+pillow
+gunicorn
