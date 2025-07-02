@@ -4,3 +4,4 @@ twilio
 selenium
 tinydb
 webdriver-manager
+firebase-admin
