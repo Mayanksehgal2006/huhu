@@ -30,40 +30,41 @@ def whatsapp_reply():
     msg = resp.message()
     data = get_user(sender)
 
-    # Handle help commands first
+    # Step 1: Handle help commands
     if incoming_msg.lower() == "help":
         msg.body("Available commands:\n1. reset username\n2. reset password\n3. reset semester\n4. reset all")
         data["step"] = "awaiting_help"
         return str(resp)
 
+    # Step 2: Handle help response
     if data["step"] == "awaiting_help":
         if "username" in incoming_msg.lower():
-            msg.body("Please enter your new username:")
             data["step"] = "awaiting_username"
+            msg.body("Please enter your new username:")
         elif "password" in incoming_msg.lower():
-            msg.body("Please enter your new password:")
             data["step"] = "awaiting_password"
+            msg.body("Please enter your new password:")
         elif "semester" in incoming_msg.lower():
-            msg.body("Please enter your semester code (e.g., 2025EVESem):")
             data["step"] = "awaiting_semester"
+            msg.body("Please enter your semester code (e.g., 2025EVESem):")
         elif "all" in incoming_msg.lower():
-            data.update({"username": None, "password": None, "semester": None, "step": "start"})
-            msg.body("All data cleared. Type anything to start again.")
+            data.update({"username": None, "password": None, "semester": None, "step": "awaiting_username"})
+            msg.body("All data cleared. Please enter your username:")
         else:
-            msg.body("Unknown command. Send 'help'.")
+            msg.body("Unknown command. Send 'help' again.")
         return str(resp)
 
-    # Step-based state machine
+    # Step 3: Collect credentials
     if data["step"] == "awaiting_username":
         data["username"] = incoming_msg
         data["step"] = "awaiting_password"
-        msg.body("Enter your Password:")
+        msg.body("Enter your password:")
         return str(resp)
 
     if data["step"] == "awaiting_password":
         data["password"] = incoming_msg
         data["step"] = "awaiting_semester"
-        msg.body("Enter your Semester Code (e.g., 2025EVESem):")
+        msg.body("Enter your semester code (e.g., 2025EVESem):")
         return str(resp)
 
     if data["step"] == "awaiting_semester":
@@ -72,18 +73,19 @@ def whatsapp_reply():
         msg.body("All credentials saved. Type anything to begin login.")
         return str(resp)
 
-    # Guard for users who haven't set their credentials
+    # Step 4: Ask for missing credentials
     if not all([data["username"], data["password"], data["semester"]]):
         if not data["username"]:
-            msg.body("Enter your Username:")
             data["step"] = "awaiting_username"
+            msg.body("Enter your username:")
         elif not data["password"]:
-            msg.body("Enter your Password:")
             data["step"] = "awaiting_password"
+            msg.body("Enter your password:")
         elif not data["semester"]:
-            msg.body("Enter your Semester Code (e.g., 2025EVESem):")
             data["step"] = "awaiting_semester"
+            msg.body("Enter your semester code:")
         return str(resp)
+
 
     # Begin login
     if data["step"] == "ready":
