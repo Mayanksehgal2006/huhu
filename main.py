@@ -54,22 +54,30 @@ def whatsapp_reply():
             msg.body("Unknown command. Send 'help' again.")
         return str(resp)
 
-    # Collect username
-    if data["step"] == "awaiting_username":
-        data["username"] = incoming_msg
-        data["step"] = "awaiting_password"
-        msg.body("Enter your password:")
+        # Step 0: No credentials collected yet — prompt for username
+    if not data["username"]:
+        if data["step"] != "awaiting_username":
+            data["step"] = "awaiting_username"
+            msg.body("Please enter your username:")
+        else:
+            data["username"] = incoming_msg
+            data["step"] = "awaiting_password"
+            msg.body("Enter your password:")
         return str(resp)
 
-    # Collect password
-    if data["step"] == "awaiting_password":
-        data["password"] = incoming_msg
-        data["step"] = "awaiting_semester"
-        msg.body("Choose your semester:\n1. 2025ODDSEM\n2. 2025EVESEM\n3. 2024ODDSEM\n\nReply with the number:")
+    # Step 1: Password
+    if not data["password"]:
+        if data["step"] != "awaiting_password":
+            data["step"] = "awaiting_password"
+            msg.body("Please enter your password:")
+        else:
+            data["password"] = incoming_msg
+            data["step"] = "awaiting_semester"
+            msg.body("Choose your semester:\n1. 2025ODDSEM\n2. 2025EVESEM\n3. 2024ODDSEM\n\nReply with the number:")
         return str(resp)
 
-    # Semester selection
-    if data["step"] == "awaiting_semester":
+    # Step 2: Semester
+    if not data["semester"] or data["step"] == "awaiting_semester":
         semester_map = {
             "1": "2025ODDSEM",
             "2": "2025EVESEM",
@@ -83,6 +91,7 @@ def whatsapp_reply():
         else:
             msg.body("Invalid choice. Please reply with 1, 2, or 3.")
         return str(resp)
+
 
     # Ask for missing credentials if needed
     if not all([data["username"], data["password"], data["semester"]]):
