@@ -65,32 +65,34 @@ def whatsapp_reply():
         return str(resp)
 
     # Credential collection
-    if data["username"] is None:
-        data["step"] = "awaiting_username"
-        msg.body("Enter your Username:")
-        update_user_data(sender, data)
-        return str(resp)
-
     if data["step"] == "awaiting_username":
         data["username"] = incoming_msg
         data["step"] = "awaiting_password"
-        msg.body("Enter your Password:")
         update_user_data(sender, data)
+        msg.body("Enter your Password:")
         return str(resp)
 
     if data["step"] == "awaiting_password":
         data["password"] = incoming_msg
         data["step"] = "awaiting_semester"
-        msg.body("Enter your Semester Code:")
         update_user_data(sender, data)
+        msg.body("Enter your Semester Code (e.g., 2025EVESem):")
         return str(resp)
 
     if data["step"] == "awaiting_semester":
         data["semester"] = incoming_msg
         data["step"] = "start"
         update_user_data(sender, data)
-        msg.body("All credentials received. Type anything to continue and fetch attendance.")
+        msg.body("All credentials saved. Type anything to begin login.")
         return str(resp)
+
+
+    if data["username"] is None:
+        data["step"] = "awaiting_username"
+        update_user_data(sender, data)
+        msg.body("Enter your Username:")
+        return str(resp)
+
 
 
     if data["step"] == "start":
