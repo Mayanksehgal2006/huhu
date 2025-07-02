@@ -2,7 +2,7 @@ from flask import Flask, request, send_from_directory
 from twilio.twiml.messaging_response import MessagingResponse
 import base64
 import os
-import scraper  # Assuming scraper.py is in same directory
+import scraper  # scraper.py should be in the same directory
 
 app = Flask(__name__)
 
@@ -30,13 +30,13 @@ def whatsapp_reply():
     msg = resp.message()
     data = get_user(sender)
 
-    # Step 1: Handle help commands
+    # Help command
     if incoming_msg.lower() == "help":
         msg.body("Available commands:\n1. reset username\n2. reset password\n3. reset semester\n4. reset all")
         data["step"] = "awaiting_help"
         return str(resp)
 
-    # Step 2: Handle help response
+    # Handle help responses
     if data["step"] == "awaiting_help":
         if "username" in incoming_msg.lower():
             data["step"] = "awaiting_username"
@@ -46,7 +46,7 @@ def whatsapp_reply():
             msg.body("Please enter your new password:")
         elif "semester" in incoming_msg.lower():
             data["step"] = "awaiting_semester"
-            msg.body("Please enter your semester code (e.g., 2025EVESem):")
+            msg.body("Choose your semester:\n1. 2025ODDSEM\n2. 2025EVESEM\n3. 2024ODDSEM\n\nReply with the number:")
         elif "all" in incoming_msg.lower():
             data.update({"username": None, "password": None, "semester": None, "step": "awaiting_username"})
             msg.body("All data cleared. Please enter your username:")
@@ -54,26 +54,37 @@ def whatsapp_reply():
             msg.body("Unknown command. Send 'help' again.")
         return str(resp)
 
-    # Step 3: Collect credentials
+    # Collect username
     if data["step"] == "awaiting_username":
         data["username"] = incoming_msg
         data["step"] = "awaiting_password"
         msg.body("Enter your password:")
         return str(resp)
 
+    # Collect password
     if data["step"] == "awaiting_password":
         data["password"] = incoming_msg
         data["step"] = "awaiting_semester"
-        msg.body("Enter your semester code (e.g., 2025EVESem):")
+        msg.body("Choose your semester:\n1. 2025ODDSEM\n2. 2025EVESEM\n3. 2024ODDSEM\n\nReply with the number:")
         return str(resp)
 
+    # Semester selection
     if data["step"] == "awaiting_semester":
-        data["semester"] = incoming_msg
-        data["step"] = "ready"
-        msg.body("All credentials saved. Type anything to begin login.")
+        semester_map = {
+            "1": "2025ODDSEM",
+            "2": "2025EVESEM",
+            "3": "2024ODDSEM"
+        }
+        choice = incoming_msg.strip()
+        if choice in semester_map:
+            data["semester"] = semester_map[choice]
+            data["step"] = "ready"
+            msg.body(f"Semester set to {semester_map[choice]}.\nAll credentials saved. Type anything to begin login.")
+        else:
+            msg.body("Invalid choice. Please reply with 1, 2, or 3.")
         return str(resp)
 
-    # Step 4: Ask for missing credentials
+    # Ask for missing credentials if needed
     if not all([data["username"], data["password"], data["semester"]]):
         if not data["username"]:
             data["step"] = "awaiting_username"
@@ -83,11 +94,10 @@ def whatsapp_reply():
             msg.body("Enter your password:")
         elif not data["semester"]:
             data["step"] = "awaiting_semester"
-            msg.body("Enter your semester code:")
+            msg.body("Choose your semester:\n1. 2025ODDSEM\n2. 2025EVESEM\n3. 2024ODDSEM\n\nReply with the number:")
         return str(resp)
 
-
-    # Begin login
+    # Begin login and captcha
     if data["step"] == "ready":
         msg.body("Logging in... Please wait.")
         driver = scraper.launch_driver()
@@ -109,6 +119,7 @@ def whatsapp_reply():
         driver.quit()
         return str(resp)
 
+    # Final login with captcha
     if data["step"] == "awaiting_captcha":
         captcha = incoming_msg
         driver = scraper.launch_driver()
