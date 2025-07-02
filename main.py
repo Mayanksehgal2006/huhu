@@ -21,17 +21,25 @@ firebase_admin.initialize_app(cred, {
 })
 
 def get_user_data(phone):
-    ref = db.reference(f'users/{phone}')
-    data = ref.get()
-    if not data:
-        return {
-            "phone": phone,
-            "step": "start",
-            "username": None,
-            "password": None,
-            "semester": None
-        }
-    return data
+    default_data = {
+        "phone": phone,
+        "step": "start",
+        "username": None,
+        "password": None,
+        "semester": None,
+        "captcha_src": "",
+    }
+    result = db.get(User.phone == phone)
+    if not result:
+        return default_data
+
+    # Ensure all required keys exist
+    for key in default_data:
+        if key not in result:
+            result[key] = default_data[key]
+
+    return result
+
 
 def update_user_data(phone, data):
     ref = db.reference(f'users/{phone}')
