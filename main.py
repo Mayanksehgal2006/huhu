@@ -24,17 +24,18 @@ def get_user(phone):
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_reply():
-    if incoming_msg.lower() == "force reset":
-        user_sessions.clear()
-        msg.body("All user sessions cleared. Start again with username.")
-        return str(resp)
 
     incoming_msg = request.values.get("Body", "").strip()
     sender = request.values.get("From", "").split(":")[-1]
     resp = MessagingResponse()
     msg = resp.message()
+    
+    if incoming_msg.lower() == "force reset":
+        user_sessions.clear()
+        msg.body("All user sessions cleared. Start again with username.")
+        return str(resp)
+        
     data = get_user(sender)
-
     # Help command
     if incoming_msg.lower() == "help":
         msg.body("Available commands:\n1. reset username\n2. reset password\n3. reset semester\n4. reset all")
