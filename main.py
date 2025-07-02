@@ -86,11 +86,11 @@ def whatsapp_reply():
         return str(resp)
 
     if data["step"] == "awaiting_semester":
-    data["semester"] = incoming_msg
-    data["step"] = "start"
-    update_user_data(sender, data)
-    msg.body("All credentials received. Type anything to continue and fetch attendance.")
-    return str(resp)
+        data["semester"] = incoming_msg
+        data["step"] = "start"
+        update_user_data(sender, data)
+        msg.body("All credentials received. Type anything to continue and fetch attendance.")
+        return str(resp)
 
 
     if data["step"] == "start":
