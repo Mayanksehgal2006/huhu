@@ -53,11 +53,6 @@ def whatsapp_reply():
             msg.body("Unknown command. Send 'help'.")
         return str(resp)
 
-    if data["username"] is None:
-        msg.body("Enter your Username:")
-        data["step"] = "awaiting_username"
-        return str(resp)
-
     if data["step"] == "awaiting_username":
         data["username"] = incoming_msg
         data["step"] = "awaiting_password"
@@ -74,6 +69,11 @@ def whatsapp_reply():
         data["semester"] = incoming_msg
         data["step"] = "ready"
         msg.body("All credentials saved. Type anything to begin login.")
+        return str(resp)
+        
+    if data["username"] is None:
+        msg.body("Enter your Username:")
+        data["step"] = "awaiting_username"
         return str(resp)
 
     if data["step"] == "ready":
