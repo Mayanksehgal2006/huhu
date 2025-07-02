@@ -5,31 +5,36 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from tinydb import TinyDB, Query
 import base64
 import time
 import os
+import firebase_admin
+from firebase_admin import credentials, db
 
 app = Flask(__name__)
 
-db = TinyDB('session_db.json')
-User = Query()
+# Initialize Firebase Admin SDK
+cred = credentials.Certificate("firebase_credentials.json")
+firebase_admin.initialize_app(cred, {
+    'databaseURL': 'https://jiit-attendance-bot-default-rtdb.asia-southeast1.firebasedatabase.app'
+})
 
 def get_user_data(phone):
-    result = db.get(User.phone == phone)
-    if not result:
+    ref = db.reference(f'users/{phone}')
+    data = ref.get()
+    if not data:
         return {
             "phone": phone,
             "step": "start",
             "username": None,
             "password": None,
-            "semester": None,
-            "captcha_src": "",
+            "semester": None
         }
-    return result
+    return data
 
 def update_user_data(phone, data):
-    db.upsert(data, User.phone == phone)
+    ref = db.reference(f'users/{phone}')
+    ref.set(data)
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_reply():
@@ -62,7 +67,6 @@ def whatsapp_reply():
             msg.body("Please enter your semester code (e.g., 2025EVESem):")
             data["step"] = "awaiting_semester"
         elif "all" in incoming_msg.lower():
-            data = get_user_data(sender)
             data.update({"username": None, "password": None, "semester": None, "step": "start"})
             msg.body("All credentials cleared. Please start over.")
         else:
@@ -101,7 +105,6 @@ def whatsapp_reply():
         options.add_argument('--headless')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
-
         driver = webdriver.Chrome(options=options)
 
         driver.get("https://webportal.jiit.ac.in:6011/studentportal/#/login")
