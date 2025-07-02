@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, send_from_directory
 from twilio.twiml.messaging_response import MessagingResponse
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -13,33 +13,32 @@ from firebase_admin import credentials, db
 
 app = Flask(__name__)
 
-# Initialize Firebase Admin SDK
+# Initialize Firebase
 cred = credentials.Certificate("/etc/secrets/firebase_credentials.json")
-
 firebase_admin.initialize_app(cred, {
     'databaseURL': 'https://jiit-attendance-bot-default-rtdb.asia-southeast1.firebasedatabase.app'
 })
 
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('static', filename)
+
 def get_user_data(phone):
+    ref = db.reference(f'users/{phone}')
+    result = ref.get()
     default_data = {
         "phone": phone,
         "step": "start",
         "username": None,
         "password": None,
-        "semester": None,
-        "captcha_src": "",
+        "semester": None
     }
-    result = db.get(User.phone == phone)
-    if not result:
+    if result is None:
         return default_data
-
-    # Ensure all required keys exist
     for key in default_data:
         if key not in result:
             result[key] = default_data[key]
-
     return result
-
 
 def update_user_data(phone, data):
     ref = db.reference(f'users/{phone}')
@@ -55,12 +54,7 @@ def whatsapp_reply():
     data = get_user_data(sender)
 
     if incoming_msg.lower() == "help":
-        msg.body("Available commands:\n" +
-                 "1. reset username\n" +
-                 "2. reset password\n" +
-                 "3. reset semester\n" +
-                 "4. reset all\n" +
-                 "Reply with your choice.")
+        msg.body("Available commands:\n1. reset username\n2. reset password\n3. reset semester\n4. reset all\nReply with your choice.")
         data["step"] = "awaiting_help"
         update_user_data(sender, data)
         return str(resp)
@@ -124,17 +118,21 @@ def whatsapp_reply():
 
         if "base64" in src:
             img_data = base64.b64decode(src.split(",")[1])
+            if not os.path.exists("static"):
+                os.makedirs("static")
             path = f"static/{sender}_captcha.jpeg"
             with open(path, "wb") as f:
                 f.write(img_data)
-            msg.media(f"https://jiit-attendance-bot.onrender.com/{path}")
+            msg.media(f"https://jiit-attendance-bot.onrender.com/static/{sender}_captcha.jpeg")
             msg.body("Please reply with the CAPTCHA text.")
             data["step"] = "awaiting_captcha"
             update_user_data(sender, data)
         else:
             msg.body("Could not retrieve captcha. Please try again.")
+        driver.quit()
+        return str(resp)
 
-    elif data["step"] == "awaiting_captcha":
+    if data["step"] == "awaiting_captcha":
         captcha = incoming_msg
         options = Options()
         options.add_argument('--headless')
@@ -144,13 +142,13 @@ def whatsapp_reply():
         driver.get("https://webportal.jiit.ac.in:6011/studentportal/#/login")
         time.sleep(5)
 
-        driver.find_element(By.ID, "mat-input-0").send_keys(data["username"])
-        driver.find_element(By.ID, "mat-input-1").send_keys(data["password"])
-        driver.find_element(By.CSS_SELECTOR, "input.ng-pristine").send_keys(captcha)
-        driver.find_element(By.CSS_SELECTOR, "button.ng-pristine").click()
-        time.sleep(5)
-
         try:
+            driver.find_element(By.ID, "mat-input-0").send_keys(data["username"])
+            driver.find_element(By.ID, "mat-input-1").send_keys(data["password"])
+            driver.find_element(By.CSS_SELECTOR, "input.ng-pristine").send_keys(captcha)
+            driver.find_element(By.CSS_SELECTOR, "button.ng-pristine").click()
+            time.sleep(5)
+
             class_menu = driver.find_element(By.XPATH, "//*[text()='Class and Attendance']")
             driver.execute_script("arguments[0].click();", class_menu)
             time.sleep(1)
@@ -184,16 +182,17 @@ def whatsapp_reply():
 
             msg.body(output)
             data["step"] = "done"
+
         except Exception as e:
             msg.body(f"Error retrieving attendance: {e}")
 
+        driver.quit()
         update_user_data(sender, data)
+        return str(resp)
 
-    else:
-        msg.body("Session ended or unknown command. Type any message to start again or 'help'.")
-        data["step"] = "start"
-        update_user_data(sender, data)
-
+    msg.body("Session ended or unknown command. Type any message to start again or 'help'.")
+    data["step"] = "start"
+    update_user_data(sender, data)
     return str(resp)
 
 if __name__ == "__main__":
