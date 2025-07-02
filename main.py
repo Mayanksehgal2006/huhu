@@ -26,7 +26,9 @@ def get_user_data(phone):
     return {**default, **(user or {})}
 
 def update_user_data(phone, data):
-    db.reference(f'users/{phone}').set(data)
+    ref = db.reference(f'users/{phone}')
+    ref.set(data)
+
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_reply():
@@ -84,9 +86,12 @@ def whatsapp_reply():
         return str(resp)
 
     if data["step"] == "awaiting_semester":
-        data["semester"] = incoming_msg
-        data["step"] = "start"
-        update_user_data(sender, data)
+    data["semester"] = incoming_msg
+    data["step"] = "start"
+    update_user_data(sender, data)
+    msg.body("All credentials received. Type anything to continue and fetch attendance.")
+    return str(resp)
+
 
     if data["step"] == "start":
         msg.body("Fetching CAPTCHA, please wait...")
