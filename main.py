@@ -1,19 +1,15 @@
+# main.py
+import os
+import logging
 from flask import Flask, request, send_from_directory
 from twilio.twiml.messaging_response import MessagingResponse
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-import base64
-import time
-import os
 import firebase_admin
 from firebase_admin import credentials, db
+from scraper import launch_driver, get_captcha_image, login_and_fetch_attendance
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
 
-# Initialize Firebase
 cred = credentials.Certificate("/etc/secrets/firebase_credentials.json")
 firebase_admin.initialize_app(cred, {
     'databaseURL': 'https://jiit-attendance-bot-default-rtdb.asia-southeast1.firebasedatabase.app'
@@ -25,24 +21,12 @@ def serve_static(filename):
 
 def get_user_data(phone):
     ref = db.reference(f'users/{phone}')
-    result = ref.get()
-    default_data = {
-        "phone": phone,
-        "step": "start",
-        "username": None,
-        "password": None,
-        "semester": None
-    }
-    if result is None:
-        return default_data
-    for key in default_data:
-        if key not in result:
-            result[key] = default_data[key]
-    return result
+    user = ref.get()
+    default = {"phone": phone, "step": "start", "username": None, "password": None, "semester": None}
+    return {**default, **(user or {})}
 
 def update_user_data(phone, data):
-    ref = db.reference(f'users/{phone}')
-    ref.set(data)
+    db.reference(f'users/{phone}').set(data)
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_reply():
@@ -53,33 +37,35 @@ def whatsapp_reply():
 
     data = get_user_data(sender)
 
+    # Help flow
     if incoming_msg.lower() == "help":
-        msg.body("Available commands:\n1. reset username\n2. reset password\n3. reset semester\n4. reset all\nReply with your choice.")
+        msg.body("Available commands:\n1. reset username\n2. reset password\n3. reset semester\n4. reset all")
         data["step"] = "awaiting_help"
         update_user_data(sender, data)
         return str(resp)
 
     if data["step"] == "awaiting_help":
         if "username" in incoming_msg.lower():
-            msg.body("Please enter your new username:")
             data["step"] = "awaiting_username"
+            msg.body("Please enter your new username:")
         elif "password" in incoming_msg.lower():
-            msg.body("Please enter your new password:")
             data["step"] = "awaiting_password"
+            msg.body("Please enter your new password:")
         elif "semester" in incoming_msg.lower():
-            msg.body("Please enter your semester code (e.g., 2025EVESem):")
             data["step"] = "awaiting_semester"
+            msg.body("Please enter your semester code (e.g., 2025EVESem):")
         elif "all" in incoming_msg.lower():
             data.update({"username": None, "password": None, "semester": None, "step": "start"})
-            msg.body("All credentials cleared. Please start over.")
+            msg.body("All data reset. Start again.")
         else:
-            msg.body("Invalid command. Send 'help' to see options.")
+            msg.body("Invalid command. Type 'help' for options.")
         update_user_data(sender, data)
         return str(resp)
 
+    # Credential collection
     if data["username"] is None:
-        msg.body("Enter your Username:")
         data["step"] = "awaiting_username"
+        msg.body("Enter your Username:")
         update_user_data(sender, data)
         return str(resp)
 
@@ -93,7 +79,7 @@ def whatsapp_reply():
     if data["step"] == "awaiting_password":
         data["password"] = incoming_msg
         data["step"] = "awaiting_semester"
-        msg.body("Enter your Semester Code (e.g., 2025EVESem):")
+        msg.body("Enter your Semester Code:")
         update_user_data(sender, data)
         return str(resp)
 
@@ -103,97 +89,50 @@ def whatsapp_reply():
         update_user_data(sender, data)
 
     if data["step"] == "start":
-        msg.body("Logging in to JIIT portal... Please wait.")
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        driver = webdriver.Chrome(options=options)
+        msg.body("Fetching CAPTCHA, please wait...")
+        driver = launch_driver()
+        img_data = get_captcha_image(driver)
 
-        driver.get("https://webportal.jiit.ac.in:6011/studentportal/#/login")
-        time.sleep(5)
-
-        captcha_img = driver.find_element(By.TAG_NAME, "img")
-        src = captcha_img.get_attribute("src")
-
-        if "base64" in src:
-            img_data = base64.b64decode(src.split(",")[1])
+        if img_data:
             if not os.path.exists("static"):
                 os.makedirs("static")
             path = f"static/{sender}_captcha.jpeg"
             with open(path, "wb") as f:
                 f.write(img_data)
             msg.media(f"https://jiit-attendance-bot.onrender.com/static/{sender}_captcha.jpeg")
-            msg.body("Please reply with the CAPTCHA text.")
+            msg.body("Enter the CAPTCHA text:")
             data["step"] = "awaiting_captcha"
-            update_user_data(sender, data)
         else:
-            msg.body("Could not retrieve captcha. Please try again.")
+            msg.body("Failed to get CAPTCHA.")
+        update_user_data(sender, data)
         driver.quit()
         return str(resp)
 
     if data["step"] == "awaiting_captcha":
         captcha = incoming_msg
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        driver = webdriver.Chrome(options=options)
-        driver.get("https://webportal.jiit.ac.in:6011/studentportal/#/login")
-        time.sleep(5)
-
-        try:
-            driver.find_element(By.ID, "mat-input-0").send_keys(data["username"])
-            driver.find_element(By.ID, "mat-input-1").send_keys(data["password"])
-            driver.find_element(By.CSS_SELECTOR, "input.ng-pristine").send_keys(captcha)
-            driver.find_element(By.CSS_SELECTOR, "button.ng-pristine").click()
-            time.sleep(5)
-
-            class_menu = driver.find_element(By.XPATH, "//*[text()='Class and Attendance']")
-            driver.execute_script("arguments[0].click();", class_menu)
-            time.sleep(1)
-
-            attendance_link = driver.find_element(By.XPATH, "//*[text()='My Class Attendance by Student']")
-            driver.execute_script("arguments[0].click();", attendance_link)
-            time.sleep(3)
-
-            select = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "mat-select"))
-            )
-            driver.execute_script("arguments[0].click();", select)
-            time.sleep(1)
-
-            sem_option = driver.find_element(By.XPATH, f"//*[contains(text(),'{data['semester']}')]")
-            driver.execute_script("arguments[0].click();", sem_option)
-            time.sleep(1)
-
-            driver.find_element(By.XPATH, "//button[contains(text(),'Submit')]").click()
-            time.sleep(3)
-
-            table = driver.find_element(By.ID, "pn_id_4-table")
-            rows = table.find_elements(By.TAG_NAME, "tr")
-
-            output = "*Your Attendance:*\n"
-            for r in rows[1:]:
-                cols = r.find_elements(By.TAG_NAME, "td")
-                sub = cols[1].text
-                overall = cols[5].text
-                output += f"{sub}: {overall}%\n"
-
-            msg.body(output)
-            data["step"] = "done"
-
-        except Exception as e:
-            msg.body(f"Error retrieving attendance: {e}")
-
+        driver = launch_driver()
+        result = login_and_fetch_attendance(driver, data["username"], data["password"], captcha, data["semester"])
         driver.quit()
+
+        if result:
+            msg.body(result)
+            data["step"] = "done"
+        else:
+            msg.body("Login failed or CAPTCHA incorrect. Type 'help' to reset credentials.")
+            data["step"] = "start"
+
+        captcha_path = f"static/{sender}_captcha.jpeg"
+        if os.path.exists(captcha_path):
+            os.remove(captcha_path)
+
         update_user_data(sender, data)
         return str(resp)
 
-    msg.body("Session ended or unknown command. Type any message to start again or 'help'.")
+    msg.body("Unknown state. Type any message to start again.")
     data["step"] = "start"
     update_user_data(sender, data)
     return str(resp)
 
 if __name__ == "__main__":
     app.run(debug=True)
+
