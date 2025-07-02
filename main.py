@@ -6,7 +6,6 @@ import scraper  # Assuming scraper.py is in same directory
 
 app = Flask(__name__)
 
-# Temporary in-memory database (you can switch back to Firebase if needed)
 user_sessions = {}
 
 @app.route('/static/<path:filename>')
@@ -31,6 +30,7 @@ def whatsapp_reply():
     msg = resp.message()
     data = get_user(sender)
 
+    # Handle help commands first
     if incoming_msg.lower() == "help":
         msg.body("Available commands:\n1. reset username\n2. reset password\n3. reset semester\n4. reset all")
         data["step"] = "awaiting_help"
@@ -53,6 +53,7 @@ def whatsapp_reply():
             msg.body("Unknown command. Send 'help'.")
         return str(resp)
 
+    # Step-based state machine
     if data["step"] == "awaiting_username":
         data["username"] = incoming_msg
         data["step"] = "awaiting_password"
@@ -70,12 +71,21 @@ def whatsapp_reply():
         data["step"] = "ready"
         msg.body("All credentials saved. Type anything to begin login.")
         return str(resp)
-        
-    if data["username"] is None:
-        msg.body("Enter your Username:")
-        data["step"] = "awaiting_username"
+
+    # Guard for users who haven't set their credentials
+    if not all([data["username"], data["password"], data["semester"]]):
+        if not data["username"]:
+            msg.body("Enter your Username:")
+            data["step"] = "awaiting_username"
+        elif not data["password"]:
+            msg.body("Enter your Password:")
+            data["step"] = "awaiting_password"
+        elif not data["semester"]:
+            msg.body("Enter your Semester Code (e.g., 2025EVESem):")
+            data["step"] = "awaiting_semester"
         return str(resp)
 
+    # Begin login
     if data["step"] == "ready":
         msg.body("Logging in... Please wait.")
         driver = scraper.launch_driver()
@@ -115,7 +125,7 @@ def whatsapp_reply():
         driver.quit()
         return str(resp)
 
-    msg.body("Session completed. Send 'help' or anything to restart.")
+    msg.body("Session completed or unknown input. Send 'help' or type anything to restart.")
     data["step"] = "start"
     return str(resp)
 
