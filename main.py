@@ -5,7 +5,6 @@ import os
 import scraper  # scraper.py should be in the same directory
 
 app = Flask(__name__)
-
 user_sessions = {}
 
 @app.route('/static/<path:filename>')
@@ -24,25 +23,42 @@ def get_user(phone):
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_reply():
-
     incoming_msg = request.values.get("Body", "").strip()
     sender = request.values.get("From", "").split(":")[-1]
     resp = MessagingResponse()
     msg = resp.message()
-    
+
+    # 🔁 Hard reset for all users (admin use)
     if incoming_msg.lower() == "force reset":
         user_sessions.clear()
         msg.body("All user sessions cleared. Start again with username.")
         return str(resp)
-        
+
+    # 🔁 Reset for current user only
+    if incoming_msg.lower() == "restart":
+        user_sessions[sender] = {
+            "step": "start",
+            "username": None,
+            "password": None,
+            "semester": None
+        }
+        msg.body("Session reset. Please enter your username:")
+        return str(resp)
+
     data = get_user(sender)
-    # Help command
+
+    # 🆘 Help Command
     if incoming_msg.lower() == "help":
-        msg.body("Available commands:\n1. reset username\n2. reset password\n3. reset semester\n4. reset all")
+        msg.body(
+            "Commands:\n"
+            "• restart - Reset your session\n"
+            "• help - Show this menu\n"
+            "• reset username/password/semester/all"
+        )
         data["step"] = "awaiting_help"
         return str(resp)
 
-    # Handle help responses
+    # 🛠 Help response handling
     if data["step"] == "awaiting_help":
         if "username" in incoming_msg.lower():
             data["step"] = "awaiting_username"
@@ -52,16 +68,16 @@ def whatsapp_reply():
             msg.body("Please enter your new password:")
         elif "semester" in incoming_msg.lower():
             data["step"] = "awaiting_semester"
-            msg.body("Choose your semester:\n1. 2025ODDSEM\n2. 2025EVESEM\n3. 2024ODDSEM\n\nReply with the number:")
+            msg.body("Choose your semester:\n1. 2025ODDSEM\n2. 2025EVESEM\n3. 2024ODDSEM\nReply with 1, 2 or 3.")
         elif "all" in incoming_msg.lower():
             data.update({"username": None, "password": None, "semester": None, "step": "awaiting_username"})
-            msg.body("All data cleared. Please enter your username:")
+            msg.body("All credentials cleared. Please enter your username:")
         else:
             msg.body("Unknown command. Send 'help' again.")
         return str(resp)
 
-        # Step 0: No credentials collected yet — prompt for username
-    if not data["username"]:
+    # ✍ Step 0: Ask for username
+    if not data["username"] or data["step"] == "awaiting_username":
         if data["step"] != "awaiting_username":
             data["step"] = "awaiting_username"
             msg.body("Please enter your username:")
@@ -71,18 +87,18 @@ def whatsapp_reply():
             msg.body("Enter your password:")
         return str(resp)
 
-    # Step 1: Password
-    if not data["password"]:
+    # ✍ Step 1: Ask for password
+    if not data["password"] or data["step"] == "awaiting_password":
         if data["step"] != "awaiting_password":
             data["step"] = "awaiting_password"
             msg.body("Please enter your password:")
         else:
             data["password"] = incoming_msg
             data["step"] = "awaiting_semester"
-            msg.body("Choose your semester:\n1. 2025ODDSEM\n2. 2025EVESEM\n3. 2024ODDSEM\n\nReply with the number:")
+            msg.body("Choose your semester:\n1. 2025ODDSEM\n2. 2025EVESEM\n3. 2024ODDSEM\nReply with 1, 2 or 3.")
         return str(resp)
 
-    # Step 2: Semester
+    # ✍ Step 2: Ask for semester selection
     if not data["semester"] or data["step"] == "awaiting_semester":
         semester_map = {
             "1": "2025ODDSEM",
@@ -93,26 +109,13 @@ def whatsapp_reply():
         if choice in semester_map:
             data["semester"] = semester_map[choice]
             data["step"] = "ready"
-            msg.body(f"Semester set to {semester_map[choice]}.\nAll credentials saved. Type anything to begin login.")
+            msg.body(f"Semester set to {semester_map[choice]}.\nAll credentials saved. Type anything to login.")
         else:
-            msg.body("Invalid choice. Please reply with 1, 2, or 3.")
-        return str(resp)
-
-
-    # Ask for missing credentials if needed
-    if not all([data["username"], data["password"], data["semester"]]):
-        if not data["username"]:
-            data["step"] = "awaiting_username"
-            msg.body("Enter your username:")
-        elif not data["password"]:
-            data["step"] = "awaiting_password"
-            msg.body("Enter your password:")
-        elif not data["semester"]:
             data["step"] = "awaiting_semester"
-            msg.body("Choose your semester:\n1. 2025ODDSEM\n2. 2025EVESEM\n3. 2024ODDSEM\n\nReply with the number:")
+            msg.body("Invalid choice. Reply with:\n1. 2025ODDSEM\n2. 2025EVESEM\n3. 2024ODDSEM")
         return str(resp)
 
-    # Begin login and captcha
+    # 🚀 Begin login
     if data["step"] == "ready":
         msg.body("Logging in... Please wait.")
         driver = scraper.launch_driver()
@@ -125,16 +128,17 @@ def whatsapp_reply():
                 with open(img_path, "wb") as f:
                     f.write(base64.b64decode(captcha_base64))
                 msg.media(f"https://jiit-attendance-bot.onrender.com/static/{sender}_captcha.jpeg")
-                msg.body("Please enter CAPTCHA text shown above:")
+                msg.body("Enter CAPTCHA shown above:")
                 data["step"] = "awaiting_captcha"
             else:
-                msg.body("Failed to fetch captcha.")
+                msg.body("Failed to fetch CAPTCHA.")
         except Exception as e:
             msg.body(f"Error during login: {e}")
+            print(f"[ERROR] Login failed: {e}")
         driver.quit()
         return str(resp)
 
-    # Final login with captcha
+    # 🔐 Login with CAPTCHA
     if data["step"] == "awaiting_captcha":
         captcha = incoming_msg
         driver = scraper.launch_driver()
@@ -150,10 +154,12 @@ def whatsapp_reply():
             data["step"] = "done"
         except Exception as e:
             msg.body(f"Error retrieving attendance: {e}")
+            print(f"[ERROR] Attendance fetch failed: {e}")
         driver.quit()
         return str(resp)
 
-    msg.body("Session completed or unknown input. Send 'help' or type anything to restart.")
+    # Final fallback
+    msg.body("Session completed or unknown input. Send 'restart' or 'help' to continue.")
     data["step"] = "start"
     return str(resp)
 
