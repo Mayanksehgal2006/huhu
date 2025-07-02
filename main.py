@@ -14,7 +14,8 @@ from firebase_admin import credentials, db
 app = Flask(__name__)
 
 # Initialize Firebase Admin SDK
-cred = credentials.Certificate("firebase_credentials.json")
+cred = credentials.Certificate("/etc/secrets/firebase_credentials.json")
+
 firebase_admin.initialize_app(cred, {
     'databaseURL': 'https://jiit-attendance-bot-default-rtdb.asia-southeast1.firebasedatabase.app'
 })
