@@ -2,11 +2,13 @@ import time
 import base64
 import json
 import tempfile
+import os
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
 CONFIG_PATH = "config.json"
 
@@ -20,15 +22,22 @@ def save_config(data):
 
 def launch_driver():
     options = Options()
-    options.add_argument('--headless')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1280x1696")
 
-    # ✅ Create unique temporary user data directory
+    # Required for Render
+    options.binary_location = "/usr/bin/google-chrome"
+
+    # Optional: use a temporary user data dir for sandboxed session
     tmp_profile_dir = tempfile.mkdtemp()
-    options.add_argument(f'--user-data-dir={tmp_profile_dir}')
+    options.add_argument(f"--user-data-dir={tmp_profile_dir}")
 
-    return webdriver.Chrome(options=options)
+    # Use webdriver-manager to install ChromeDriver
+    driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
+    return driver
 
 def fetch_captcha_base64(driver):
     driver.get("https://webportal.jiit.ac.in:6011/studentportal/#/login")
