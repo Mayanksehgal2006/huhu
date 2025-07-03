@@ -29,8 +29,6 @@ def launch_driver():
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1280x1696")
 
-    # Only if you're deploying on Render or Linux servers
-    options.binary_location = "/usr/bin/google-chrome"
 
     # Temporary user data dir
     tmp_profile_dir = tempfile.mkdtemp()
