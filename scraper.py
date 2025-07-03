@@ -4,6 +4,7 @@ import json
 import tempfile
 import os
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -28,15 +29,16 @@ def launch_driver():
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1280x1696")
 
-    # Required for Render
+    # Only if you're deploying on Render or Linux servers
     options.binary_location = "/usr/bin/google-chrome"
 
-    # Optional: use a temporary user data dir for sandboxed session
+    # Temporary user data dir
     tmp_profile_dir = tempfile.mkdtemp()
     options.add_argument(f"--user-data-dir={tmp_profile_dir}")
 
-    # Use webdriver-manager to install ChromeDriver
-    driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
+    # Set up driver with Service object (correct way)
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=options)
     return driver
 
 def fetch_captcha_base64(driver):
