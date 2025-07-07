@@ -25,8 +25,16 @@ def save_config(data):
         json.dump(data, f, indent=4)
 
 def launch_driver():
-    options = Options()
+    # ✅ Install matching ChromeDriver
     chromedriver_autoinstaller.install()
+
+    # ✅ Set Chromium binary path (used in Render or headless Linux)
+    chrome_bin = "/usr/bin/chromium"  # or "/usr/bin/chromium-browser"
+    if not os.path.exists(chrome_bin):
+        chrome_bin = "/usr/bin/google-chrome"  # fallback path
+
+    options = Options()
+    options.binary_location = chrome_bin
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
