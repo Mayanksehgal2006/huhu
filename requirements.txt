@@ -5,3 +5,4 @@ selenium
 tinydb
 webdriver-manager
 firebase-admin
+chromedriver-autoinstaller
