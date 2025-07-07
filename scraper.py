@@ -24,6 +24,7 @@ def save_config(data):
 
 def launch_driver():
     options = Options()
+    options.binary_location = os.environ.get("GOOGLE_CHROME_BIN", "/usr/bin/chromium-browser")
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
