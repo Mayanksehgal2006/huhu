@@ -3,3 +3,4 @@
 # Make sure the system is up to date
 apt-get update
 apt-get install -y chromium-browser
+pip install -r requirements.txt
