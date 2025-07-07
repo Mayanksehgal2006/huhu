@@ -2,8 +2,13 @@ from flask import Flask, request, send_from_directory
 from twilio.twiml.messaging_response import MessagingResponse
 import base64
 import os
+import subprocess
 import scraper  # scraper.py should be in the same directory
-
+try:
+    chrome_path = subprocess.check_output(["which", "chromium-browser"]).decode().strip()
+    print("✅ Chromium found at:", chrome_path)
+except Exception as e:
+    print("❌ Chromium not found:", e)
 app = Flask(__name__)
 user_sessions = {}
 
